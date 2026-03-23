@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Range Optimization Animation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { touch-action: none; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 h-screen flex flex-col p-4 sm:p-8">
+
+    <div class="max-w-7xl w-full mx-auto bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col lg:flex-row h-full">
+        
+        <!-- Left Panel: Controls and Statistics -->
+        <div class="w-full lg:w-[35%] p-6 bg-slate-50 border-r border-slate-200 flex flex-col overflow-y-auto">
+            <h1 class="text-2xl font-bold text-emerald-700 mb-2">Range Optimization</h1>
+            <p class="text-sm text-slate-500 mb-6">Discover how launch angle affects the total distance. The mathematical maximum is reached at exactly 45°.</p>
+
+            <!-- Parameters -->
+            <div class="space-y-5 mb-8">
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm font-medium text-slate-700">Constant Velocity (v₀)</label>
+                        <span id="v0Val" class="text-sm font-bold text-emerald-600">50 m/s</span>
+                    </div>
+                    <input type="range" id="v0Input" min="20" max="100" value="50" step="5" class="w-full h-2 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+                    <p class="text-xs text-slate-400 mt-1">Velocity is kept constant to isolate the effect of the angle.</p>
+                </div>
+
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm font-medium text-slate-700">Custom Launch Angle (θ)</label>
+                        <span id="angleVal" class="text-sm font-bold text-emerald-600">45°</span>
+                    </div>
+                    <input type="range" id="angleInput" min="5" max="85" value="45" step="1" class="w-full h-2 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="grid grid-cols-2 gap-3 mb-8">
+                <button id="fireBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
+                    Fire Custom Angle
+                </button>
+                <button id="sweepBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex flex-col items-center justify-center leading-tight">
+                    <span>Sweep Angles</span>
+                    <span class="text-[10px] font-normal opacity-80">(15°, 30°, 45°, 60°, 75°)</span>
+                </button>
+                <button id="clearBtn" class="col-span-2 bg-slate-600 hover:bg-slate-700 text-white py-2 rounded-lg font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2">
+                    Clear Screen
+                </button>
+            </div>
+
+            <!-- Theoretical Results -->
+            <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-6">
+                <h2 class="text-sm font-bold text-emerald-800 mb-3 border-b border-emerald-200 pb-2">Mathematical Proof</h2>
+                <div class="text-sm text-slate-700 space-y-2">
+                    <p class="font-mono bg-white px-2 py-1 rounded text-center border border-emerald-100">R = (v₀² · sin(2θ)) / g</p>
+                    <p>For v₀ = <span id="proofV0" class="font-bold">50</span> m/s:</p>
+                    <ul class="list-disc pl-5 space-y-1 text-xs text-slate-600">
+                        <li>Maximum range occurs when <b>sin(2θ) = 1</b></li>
+                        <li>This means 2θ = 90°, so <b>θ = 45°</b></li>
+                        <li>Absolute Max Range: <b id="proofMaxR" class="text-emerald-700">254.84 m</b></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Leaderboard (Live Distances) -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-inner flex-1 flex flex-col min-h-[150px]">
+                <h2 class="text-sm font-bold text-slate-800 p-3 border-b border-slate-100 bg-slate-50 rounded-t-xl">Recorded Ranges</h2>
+                <div id="rangeList" class="p-3 space-y-2 overflow-y-auto flex-1 text-sm">
+                    <p class="text-slate-400 text-xs italic text-center mt-4">Fire a projectile to record its range.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Canvas -->
+        <div class="w-full lg:w-[65%] relative bg-white flex flex-col min-h-[500px]">
+            <!-- Grid Background and Canvas Container -->
+            <div class="absolute inset-0 p-4" id="canvasContainer">
+                <canvas id="simCanvas" class="w-full h-full rounded-lg border border-slate-200 bg-slate-50 shadow-inner"></canvas>
+            </div>
+            
+            <!-- Legend -->
+            <div class="absolute top-6 right-6 bg-white/90 backdrop-blur p-3 rounded-lg border border-slate-200 shadow-sm text-xs">
+                <div class="font-bold text-slate-700 mb-2 border-b pb-1">Complementary Angles</div>
+                <div class="flex items-center mb-1">
+                    <div class="w-4 h-1 bg-[#ef4444] mr-2"></div>
+                    <span>15° / 75° (Same Range)</span>
+                </div>
+                <div class="flex items-center mb-1">
+                    <div class="w-4 h-1 bg-[#f59e0b] mr-2"></div>
+                    <span>30° / 60° (Same Range)</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-4 h-1 bg-[#10b981] mr-2"></div>
+                    <span class="font-bold text-emerald-700">45° (Maximum Range)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+
+        const v0Input = document.getElementById('v0Input');
+        const angleInput = document.getElementById('angleInput');
+        const v0Val = document.getElementById('v0Val');
+        const angleVal = document.getElementById('angleVal');
+        
+        const fireBtn = document.getElementById('fireBtn');
+        const sweepBtn = document.getElementById('sweepBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        
+        const proofV0 = document.getElementById('proofV0');
+        const proofMaxR = document.getElementById('proofMaxR');
+        const rangeList = document.getElementById('rangeList');
+
+        // Physics Constants
+        const g = 9.81;
+        
+        // Simulation State
+        let projectiles = [];
+        let animationReq;
+        let lastTimestamp = 0;
+        
+        // Drawing Scales and Origin
+        let scale = 1; 
+        let originX = 0;
+        let originY = 0;
+        let maxTheoreticalRange = 0;
+
+        // Colors for specific angles to show complementary nature
+        function getColorForAngle(angle) {
+            if (angle === 45) return '#10b981'; // emerald (max)
+            if (angle === 30 || angle === 60) return '#f59e0b'; // amber
+            if (angle === 15 || angle === 75) return '#ef4444'; // red
+            return '#6366f1'; // indigo (custom)
+        }
+
+        // Setup canvas
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = (rect.width - 32) * dpr; 
+            canvas.height = (rect.height - 32) * dpr;
+            
+            ctx.scale(dpr, dpr);
+            canvas.style.width = `${rect.width - 32}px`;
+            canvas.style.height = `${rect.height - 32}px`;
+
+            calculateScale();
+            drawStatic();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Update UI based on sliders (without firing)
+        function updateUI() {
+            const v0 = parseFloat(v0Input.value);
+            const angle = parseFloat(angleInput.value);
+            
+            v0Val.innerText = `${v0} m/s`;
+            angleVal.innerText = `${angle}°`;
+            proofV0.innerText = v0;
+            
+            maxTheoreticalRange = (v0 * v0) / g;
+            proofMaxR.innerText = `${maxTheoreticalRange.toFixed(2)} m`;
+            
+            calculateScale();
+            if (projectiles.length === 0) {
+                drawStatic();
+            }
+        }
+
+        v0Input.addEventListener('input', () => {
+            updateUI();
+            // Clear existing projectiles if velocity changes, as scale changes
+            projectiles = [];
+            updateLeaderboard();
+        });
+        
+        angleInput.addEventListener('input', () => {
+            angleVal.innerText = `${angleInput.value}°`;
+        });
+
+        // Calculate uniform scale based on Absolute Max Range (45 deg) for current v0
+        function calculateScale() {
+            const v0 = parseFloat(v0Input.value);
+            maxTheoreticalRange = (v0 * v0) / g;
+            
+            // Max height is at 90 degrees: v0^2 / 2g
+            const maxTheoreticalHeight = (v0 * v0) / (2 * g);
+
+            const w = canvas.width / (window.devicePixelRatio || 1);
+            const h = canvas.height / (window.devicePixelRatio || 1);
+
+            const paddingX = 60;
+            const paddingY = 60;
+            
+            const usableW = w - paddingX * 2;
+            const usableH = h - paddingY * 2;
+
+            // Fit the maximum possible bounds for this velocity
+            const scaleX = usableW / maxTheoreticalRange;
+            const scaleY = usableH / maxTheoreticalHeight;
+            
+            scale = Math.min(scaleX, scaleY);
+            
+            originX = paddingX;
+            originY = h - paddingY;
+        }
+
+        function toCanvasX(x) { return originX + (x * scale); }
+        function toCanvasY(y) { return originY - (y * scale); }
+
+        // Draw background, grid, and axes
+        function drawStatic() {
+            const w = canvas.width / (window.devicePixelRatio || 1);
+            const h = canvas.height / (window.devicePixelRatio || 1);
+            
+            ctx.clearRect(0, 0, w, h);
+
+            // Axes
+            ctx.beginPath();
+            ctx.strokeStyle = '#cbd5e1'; 
+            ctx.lineWidth = 2;
+            ctx.moveTo(0, originY);
+            ctx.lineTo(w, originY);
+            ctx.moveTo(originX, h);
+            ctx.lineTo(originX, 0);
+            ctx.stroke();
+
+            // Grid markers
+            const stepX = Math.pow(10, Math.floor(Math.log10(Math.max(maxTheoreticalRange, 1))));
+            const maxH = maxTheoreticalRange / 2; // Since H_max = R_max / 2
+            const stepY = stepX; 
+            
+            ctx.fillStyle = '#64748b';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            
+            // X markers
+            for (let x = 0; x <= maxTheoreticalRange + stepX; x += stepX) {
+                const cx = toCanvasX(x);
+                ctx.beginPath();
+                ctx.moveTo(cx, originY - 5);
+                ctx.lineTo(cx, originY + 5);
+                ctx.stroke();
+                if(x > 0) ctx.fillText(x.toFixed(0), cx, originY + 20);
+            }
+
+            // Y markers
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            for (let y = stepY; y <= maxH + stepY; y += stepY) {
+                const cy = toCanvasY(y);
+                ctx.beginPath();
+                ctx.moveTo(originX - 5, cy);
+                ctx.lineTo(originX + 5, cy);
+                ctx.stroke();
+                ctx.fillText(y.toFixed(0), originX - 10, cy);
+            }
+            
+            // Draw optimal 45 degree target zone marker
+            const targetX = toCanvasX(maxTheoreticalRange);
+            ctx.beginPath();
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.2)'; // light emerald
+            ctx.arc(targetX, originY, 15, 0, Math.PI, true);
+            ctx.fill();
+            
+            ctx.fillStyle = '#10b981';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText("MAX", targetX, originY + 35);
+        }
+
+        // Draw all active and finished projectiles
+        function drawFrame() {
+            drawStatic();
+
+            projectiles.forEach(p => {
+                // Draw path
+                if (p.path.length > 0) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = p.color;
+                    ctx.lineWidth = p.angle === 45 ? 3 : 2; // Thicker line for optimal
+                    
+                    // Make finished non-optimal paths slightly transparent to emphasize 45deg
+                    if (p.isFinished && p.angle !== 45) {
+                        ctx.globalAlpha = 0.5;
+                    } else {
+                        ctx.globalAlpha = 1.0;
+                    }
+
+                    ctx.moveTo(toCanvasX(p.path[0].x), toCanvasY(p.path[0].y));
+                    for (let i = 1; i < p.path.length; i++) {
+                        ctx.lineTo(toCanvasX(p.path[i].x), toCanvasY(p.path[i].y));
+                    }
+                    ctx.stroke();
+                    ctx.globalAlpha = 1.0; // reset
+                }
+
+                // Draw projectile ball
+                if (!p.isFinished) {
+                    const cx = toCanvasX(p.x);
+                    const cy = toCanvasY(p.y);
+                    
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 5, 0, 2 * Math.PI);
+                    ctx.fillStyle = p.color;
+                    ctx.fill();
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                } else {
+                    // Draw landing marker text
+                    const landX = p.path[p.path.length-1].x;
+                    ctx.fillStyle = p.color;
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.textAlign = 'center';
+                    // Offset Y slightly based on angle to prevent complete overlap for complementary angles
+                    let yOffset = -10;
+                    if (p.angle > 45) yOffset = -25;
+                    ctx.fillText(`${p.angle}°`, toCanvasX(landX), originY + yOffset);
+                }
+            });
+        }
+
+        // Animation Loop
+        function loop(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const deltaTime = Math.min((timestamp - lastTimestamp) / 1000, 0.1); // cap dt
+            lastTimestamp = timestamp;
+
+            let isAnimating = false;
+            const simSpeed = 2.0; // Playback speed multiplier
+
+            projectiles.forEach(p => {
+                if (!p.isFinished) {
+                    isAnimating = true;
+                    
+                    // Update physics
+                    p.time += deltaTime * simSpeed;
+                    
+                    p.x = p.v0x * p.time;
+                    p.y = p.v0y * p.time - 0.5 * g * p.time * p.time;
+                    
+                    p.path.push({x: p.x, y: p.y});
+
+                    // Check if hit ground
+                    if (p.time >= p.totalFlightTime) {
+                        p.time = p.totalFlightTime;
+                        p.x = p.range;
+                        p.y = 0;
+                        p.path.push({x: p.x, y: p.y});
+                        p.isFinished = true;
+                        updateLeaderboard();
+                    }
+                }
+            });
+
+            drawFrame();
+
+            if (isAnimating) {
+                animationReq = requestAnimationFrame(loop);
+            }
+        }
+
+        function createProjectile(v0, angleDeg) {
+            const angleRad = angleDeg * Math.PI / 180;
+            const v0x = v0 * Math.cos(angleRad);
+            const v0y = v0 * Math.sin(angleRad);
+            const flightTime = (2 * v0y) / g;
+            const range = v0x * flightTime;
+
+            return {
+                v0: v0,
+                angle: angleDeg,
+                v0x: v0x,
+                v0y: v0y,
+                totalFlightTime: flightTime,
+                range: range,
+                time: 0,
+                x: 0,
+                y: 0,
+                path: [{x: 0, y: 0}],
+                color: getColorForAngle(angleDeg),
+                isFinished: false
+            };
+        }
+
+        function launch(angles) {
+            const v0 = parseFloat(v0Input.value);
+            
+            angles.forEach(angle => {
+                // Remove existing projectile with same angle if it exists to keep screen clean
+                projectiles = projectiles.filter(p => p.angle !== angle);
+                projectiles.push(createProjectile(v0, angle));
+            });
+
+            updateLeaderboard();
+
+            lastTimestamp = 0;
+            if (animationReq) cancelAnimationFrame(animationReq);
+            animationReq = requestAnimationFrame(loop);
+        }
+
+        function updateLeaderboard() {
+            if (projectiles.length === 0) {
+                rangeList.innerHTML = '<p class="text-slate-400 text-xs italic text-center mt-4">Fire a projectile to record its range.</p>';
+                return;
+            }
+
+            // Sort finished projectiles by range (descending), active ones at the bottom
+            const sorted = [...projectiles].sort((a, b) => {
+                if (a.isFinished && b.isFinished) return b.range - a.range;
+                if (a.isFinished) return -1;
+                if (b.isFinished) return 1;
+                return b.angle - a.angle;
+            });
+
+            rangeList.innerHTML = '';
+            
+            sorted.forEach((p, index) => {
+                const item = document.createElement('div');
+                const isOptimal = p.angle === 45;
+                
+                item.className = `flex justify-between items-center p-2 rounded border ${isOptimal ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-100'}`;
+                
+                const angleSpan = document.createElement('span');
+                angleSpan.className = 'font-bold';
+                angleSpan.style.color = p.color;
+                angleSpan.innerText = `${p.angle}°`;
+                
+                const rangeSpan = document.createElement('span');
+                if (p.isFinished) {
+                    rangeSpan.className = `font-mono ${isOptimal ? 'font-bold text-emerald-700' : 'text-slate-600'}`;
+                    rangeSpan.innerText = `${p.range.toFixed(2)} m`;
+                } else {
+                    rangeSpan.className = 'text-xs text-slate-400 animate-pulse';
+                    rangeSpan.innerText = 'Flying...';
+                }
+
+                item.appendChild(angleSpan);
+                item.appendChild(rangeSpan);
+                rangeList.appendChild(item);
+            });
+        }
+
+        // Event Listeners
+        fireBtn.addEventListener('click', () => {
+            const angle = parseFloat(angleInput.value);
+            launch([angle]);
+        });
+
+        sweepBtn.addEventListener('click', () => {
+            // Sweep angles: 15, 30, 45, 60, 75 to demonstrate symmetry and max
+            launch([15, 30, 45, 60, 75]);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            if (animationReq) cancelAnimationFrame(animationReq);
+            projectiles = [];
+            updateLeaderboard();
+            drawStatic();
+        });
+
+        // Initialize
+        window.onload = () => {
+            updateUI();
+            resizeCanvas();
+        };
+
+    </script>
+</body>
+</html>
